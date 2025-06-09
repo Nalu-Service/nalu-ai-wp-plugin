@@ -51,7 +51,7 @@ function chatbot_embed_settings_page() {
 add_action('wp_footer', function () {
     if (!is_admin()) {
         echo '
-        <script src="http://localhost:3000/chatbot-widget.js" type="module"></script>
+        <script src="https://ai-support.naluservices.com/assets/chatbot.min.js" type="module"></script>
         <style>
             my-chatbot-widget {
                 --chatbot-width: 400px;
