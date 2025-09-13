@@ -49,7 +49,6 @@ function chatbot_embed_settings_page() {
 
 
 add_action('wp_footer', function () {
-    if (!is_admin()) {
         echo '
         <script src="https://ai-support.naluservices.com/assets/chatbot.min.js" type="module"></script>
         <style>
@@ -60,6 +59,5 @@ add_action('wp_footer', function () {
         </style>
         ';
         echo get_option('chatbot_embed_html', '');
-    }
 });
 
