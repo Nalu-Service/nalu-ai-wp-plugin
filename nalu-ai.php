@@ -18,6 +18,7 @@ const NALU_AI_SETTINGS_OPTION = 'nalu_ai_settings';
 function nalu_ai_default_settings() {
     return array(
         'enabled' => '0',
+        'load_mode' => 'auto',
         'base_url' => 'https://ai-support.naluservices.com',
         'server_base_url' => '',
         'agent_slug' => '',
@@ -56,6 +57,20 @@ function nalu_ai_normalize_base_url($value) {
     return untrailingslashit($value);
 }
 
+function nalu_ai_sanitize_load_mode($value) {
+    return $value === 'shortcode' ? 'shortcode' : 'auto';
+}
+
+function nalu_ai_is_ready($settings) {
+    return (
+        $settings['enabled'] === '1' &&
+        !empty($settings['base_url']) &&
+        !empty($settings['agent_slug']) &&
+        !empty($settings['client_id']) &&
+        !empty($settings['client_secret'])
+    );
+}
+
 add_action('admin_menu', function () {
     add_options_page(
         'Nalu AI Settings',
@@ -78,6 +93,7 @@ function nalu_ai_settings_page() {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_admin_referer('nalu_ai_save_settings', 'nalu_ai_nonce')) {
         $settings = array(
             'enabled' => isset($_POST['enabled']) ? '1' : '0',
+            'load_mode' => isset($_POST['load_mode']) ? nalu_ai_sanitize_load_mode(wp_unslash($_POST['load_mode'])) : 'auto',
             'base_url' => isset($_POST['base_url']) ? nalu_ai_normalize_base_url(wp_unslash($_POST['base_url'])) : '',
             'server_base_url' => isset($_POST['server_base_url']) ? nalu_ai_normalize_base_url(wp_unslash($_POST['server_base_url'])) : '',
             'agent_slug' => isset($_POST['agent_slug']) ? sanitize_text_field(wp_unslash($_POST['agent_slug'])) : '',
@@ -110,6 +126,16 @@ function nalu_ai_settings_page() {
                                 <input type="checkbox" name="enabled" value="1" <?php checked($settings['enabled'], '1'); ?> />
                                 Load the chatbot on the frontend
                             </label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="load_mode">Display Mode</label></th>
+                        <td>
+                            <select name="load_mode" id="load_mode">
+                                <option value="auto" <?php selected($settings['load_mode'], 'auto'); ?>>Automatic floating chatbot</option>
+                                <option value="shortcode" <?php selected($settings['load_mode'], 'shortcode'); ?>>Shortcode only</option>
+                            </select>
+                            <p class="description">Use <code>[nalu_ai_chatbot]</code> to place the chatbot inside page or post content when Shortcode only is selected.</p>
                         </td>
                     </tr>
                     <tr>
@@ -261,13 +287,7 @@ function nalu_ai_issue_widget_token($settings) {
 function nalu_ai_rest_widget_config() {
     $settings = nalu_ai_get_settings();
 
-    if (
-        $settings['enabled'] !== '1' ||
-        empty($settings['base_url']) ||
-        empty($settings['agent_slug']) ||
-        empty($settings['client_id']) ||
-        empty($settings['client_secret'])
-    ) {
+    if (!nalu_ai_is_ready($settings)) {
         return new WP_Error(
             'nalu_ai_not_configured',
             'Nalu AI plugin is not fully configured.',
@@ -297,7 +317,13 @@ function nalu_ai_rest_widget_config() {
     ));
 }
 
-add_action('wp_footer', function () {
+function nalu_ai_print_frontend_runtime() {
+    static $printed = false;
+
+    if ($printed) {
+        return;
+    }
+
     $settings = nalu_ai_get_settings();
 
     if (
@@ -308,10 +334,19 @@ add_action('wp_footer', function () {
         return;
     }
 
+    $printed = true;
     $config_url = esc_url(rest_url('nalu-ai/v1/widget-config'));
     ?>
     <script>
         (function () {
+            if (window.NaluAI && typeof window.NaluAI.flushQueue === "function") {
+                window.NaluAI.flushQueue();
+                return;
+            }
+
+            const configUrl = <?php echo wp_json_encode($config_url); ?>;
+            let configPromise;
+
             const ensureScript = (src) =>
                 new Promise((resolve, reject) => {
                     const existing = document.querySelector(`script[data-nalu-ai-script="1"][src="${src}"]`);
@@ -337,48 +372,141 @@ add_action('wp_footer', function () {
                     document.head.appendChild(script);
                 });
 
-            const mountWidget = async () => {
-                try {
-                    const response = await fetch(<?php echo wp_json_encode($config_url); ?>, {
+            const getConfig = async () => {
+                if (!configPromise) {
+                    configPromise = fetch(configUrl, {
                         credentials: "same-origin",
+                    }).then(async (response) => {
+                        if (!response.ok) {
+                            throw new Error("Failed to fetch Nalu widget config");
+                        }
+
+                        const payload = await response.json();
+                        await ensureScript(payload.scriptUrl);
+                        return payload;
                     });
+                }
 
-                    if (!response.ok) {
-                        throw new Error("Failed to fetch Nalu widget config");
-                    }
+                return configPromise;
+            };
 
-                    const payload = await response.json();
-                    await ensureScript(payload.scriptUrl);
+            const mount = async (target, options = {}) => {
+                try {
+                    const container = target || document.body;
 
-                    if (document.querySelector("my-chatbot-widget[data-nalu-ai-widget='1']")) {
+                    if (!container || document.querySelector("my-chatbot-widget[data-nalu-ai-widget='1']")) {
                         return;
                     }
 
+                    const payload = await getConfig();
                     const widget = document.createElement("my-chatbot-widget");
                     widget.dataset.naluAiWidget = "1";
                     widget.setAttribute("api-url", payload.apiUrl);
                     widget.setAttribute("access-token", payload.accessToken);
 
-                    if (payload.width) {
-                        widget.setAttribute("width", payload.width);
+                    const width = options.width || payload.width;
+                    const height = options.height || payload.height;
+
+                    if (width) {
+                        widget.setAttribute("width", width);
                     }
 
-                    if (payload.height) {
-                        widget.setAttribute("height", payload.height);
+                    if (height) {
+                        widget.setAttribute("height", height);
                     }
 
-                    document.body.appendChild(widget);
+                    container.appendChild(widget);
                 } catch (error) {
                     console.error("Nalu AI plugin error:", error);
                 }
             };
 
-            if (document.readyState === "loading") {
-                document.addEventListener("DOMContentLoaded", mountWidget, { once: true });
-            } else {
-                mountWidget();
-            }
+            window.NaluAI = {
+                mount,
+                flushQueue() {
+                    const queue = window.NaluAIQueue || [];
+                    while (queue.length) {
+                        const entry = queue.shift();
+                        if (!entry || !entry.selector) {
+                            continue;
+                        }
+
+                        const target = document.querySelector(entry.selector);
+                        if (target) {
+                            mount(target, entry.options || {});
+                        }
+                    }
+                },
+            };
+
+            window.NaluAI.flushQueue();
         })();
+    </script>
+    <?php
+}
+
+add_shortcode('nalu_ai_chatbot', function ($atts) {
+    $settings = nalu_ai_get_settings();
+
+    if (!nalu_ai_is_ready($settings)) {
+        return '';
+    }
+
+    $atts = shortcode_atts(array(
+        'width' => '',
+        'height' => '',
+    ), $atts, 'nalu_ai_chatbot');
+
+    nalu_ai_print_frontend_runtime();
+
+    static $instance = 0;
+    $instance++;
+    $container_id = 'nalu-ai-chatbot-' . $instance;
+    $options = array_filter(array(
+        'width' => trim((string) $atts['width']),
+        'height' => trim((string) $atts['height']),
+    ));
+
+    ob_start();
+    ?>
+    <div id="<?php echo esc_attr($container_id); ?>" class="nalu-ai-chatbot-shortcode"></div>
+    <script>
+        window.NaluAIQueue = window.NaluAIQueue || [];
+        window.NaluAIQueue.push({
+            selector: <?php echo wp_json_encode('#' . $container_id); ?>,
+            options: <?php echo wp_json_encode($options); ?>,
+        });
+
+        if (window.NaluAI && typeof window.NaluAI.flushQueue === "function") {
+            window.NaluAI.flushQueue();
+        }
+    </script>
+    <?php
+    return ob_get_clean();
+});
+
+add_action('wp_footer', function () {
+    $settings = nalu_ai_get_settings();
+
+    if (
+        !nalu_ai_is_ready($settings) ||
+        $settings['load_mode'] !== 'auto'
+    ) {
+        return;
+    }
+
+    nalu_ai_print_frontend_runtime();
+    ?>
+    <script>
+        window.NaluAIQueue = window.NaluAIQueue || [];
+        window.NaluAIQueue.push({
+            selector: "body",
+            options: {},
+        });
+
+        if (window.NaluAI && typeof window.NaluAI.flushQueue === "function") {
+            window.NaluAI.flushQueue();
+        }
     </script>
     <?php
 });
