@@ -274,11 +274,19 @@ function nalu_ai_issue_widget_token($settings) {
     }
 
     $status = wp_remote_retrieve_response_code($response);
-    $body = json_decode(wp_remote_retrieve_body($response), true);
+    $raw_body = wp_remote_retrieve_body($response);
+    $body = json_decode($raw_body, true);
 
     if ($status !== 200 || empty($body['accessToken'])) {
         $error_message = !empty($body['error']) ? $body['error'] : 'Failed to fetch Nalu widget token.';
-        return new WP_Error('nalu_ai_widget_token_failed', $error_message);
+        $error_data = array(
+            'status' => $status ?: 500,
+            'requestUrl' => $request_url,
+            'siteOrigin' => $site_origin,
+            'responseBody' => $raw_body,
+        );
+
+        return new WP_Error('nalu_ai_widget_token_failed', $error_message, $error_data);
     }
 
     return $body['accessToken'];
@@ -301,7 +309,7 @@ function nalu_ai_rest_widget_config() {
         return new WP_Error(
             'nalu_ai_widget_token_failed',
             $access_token->get_error_message(),
-            array('status' => 500)
+            $access_token->get_error_data() ?: array('status' => 500)
         );
     }
 
