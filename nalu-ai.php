@@ -86,8 +86,9 @@ add_action('rest_api_init', function () {
         'methods' => 'GET',
         'callback' => 'nalu_ai_rest_widget_config',
         'permission_callback' => '__return_true',
-    ));
-});
+    ), 200, );
+}
+);
 
 function nalu_ai_settings_page() {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_admin_referer('nalu_ai_save_settings', 'nalu_ai_nonce')) {
@@ -314,16 +315,23 @@ function nalu_ai_rest_widget_config() {
     }
 
     $base_url = nalu_ai_normalize_base_url($settings['base_url']);
+    $headers = array(
+        'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma' => 'no-cache',
+        'Expires' => '0',
+    );
 
-    return rest_ensure_response(array(
+    return new WP_REST_Response(array(
         'ok' => true,
         'scriptUrl' => $base_url . '/assets/chatbot.min.js',
         'apiUrl' => $base_url . '/api/v1/agents/' . rawurlencode($settings['agent_slug']),
         'accessToken' => $access_token,
         'width' => trim((string) $settings['width']),
         'height' => trim((string) $settings['height']),
-    ));
+    ), 200, $headers);
 }
+
+
 
 function nalu_ai_print_frontend_runtime() {
     static $printed = false;
