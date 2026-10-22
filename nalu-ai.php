@@ -10,6 +10,7 @@
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       nalu-ai
+ * Update URI:        https://github.com/Nalu-Service/nalu-ai-wp-plugin
  */
 
 defined('ABSPATH') || exit;
@@ -23,6 +24,7 @@ require_once __DIR__ . '/includes/settings.php';
 require_once __DIR__ . '/includes/token.php';
 require_once __DIR__ . '/includes/rest.php';
 require_once __DIR__ . '/includes/frontend.php';
+require_once __DIR__ . '/includes/updater.php';
 
 if (is_admin()) {
     require_once __DIR__ . '/includes/admin.php';

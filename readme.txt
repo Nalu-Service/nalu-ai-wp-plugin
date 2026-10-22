@@ -28,6 +28,17 @@ To keep the client secret out of the database, define it in `wp-config.php` inst
 
     define( 'NALU_AI_CLIENT_SECRET', 'your-client-secret' );
 
+== Updates ==
+
+From 2.0.0 on, new versions appear on the **Plugins** screen like any other plugin update, and
+you can turn on automatic updates there. Updates come from this plugin's GitHub releases.
+
+**Upgrading from 1.x:** 1.x can't update itself, so install 2.0.0 by hand once. Your settings are kept.
+
+1. Deactivate and delete the old Nalu AI plugin.
+2. Go to **Plugins > Add New > Upload Plugin** and upload `nalu-ai.zip` from the latest release.
+3. Activate it and check **Settings > Nalu AI**.
+
 == Frequently Asked Questions ==
 
 = How do I show the chatbot on some pages only? =
@@ -44,6 +55,7 @@ Yes. The page only contains a static script; the widget token is fetched from th
 == Changelog ==
 
 = 2.0.0 =
+* Updates from GitHub releases on the Plugins screen, including automatic updates.
 * Settings page rebuilt on the WordPress Settings API, with a Test connection button and a Settings link on the Plugins screen.
 * The saved client secret is no longer printed into the settings page; leave the field blank to keep it. It can also come from `NALU_AI_CLIENT_SECRET` in wp-config.php.
 * Widget tokens are cached and shared across page views instead of being requested on every page view, and failures are cached for a minute.

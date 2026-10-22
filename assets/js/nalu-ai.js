@@ -130,7 +130,7 @@
     });
   };
 
-  window.NaluAI = { version: "2.0.0" };
+  window.NaluAI = { loaded: true };
 
   document.addEventListener("visibilitychange", refreshIfExpired);
 
