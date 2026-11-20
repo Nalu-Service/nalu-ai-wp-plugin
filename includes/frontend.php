@@ -8,6 +8,8 @@ defined('ABSPATH') || exit;
 // Registered on init (not wp_enqueue_scripts) because block themes render the
 // shortcode before wp_enqueue_scripts fires.
 add_action('init', function () {
+    $settings = nalu_ai_get_settings();
+
     wp_register_script(
         'nalu-ai',
         plugins_url('assets/js/nalu-ai.js', NALU_AI_FILE),
@@ -17,7 +19,11 @@ add_action('init', function () {
     );
     wp_add_inline_script(
         'nalu-ai',
-        'window.NaluAIConfig = ' . wp_json_encode(array('configUrl' => rest_url('nalu-ai/v1/widget-config'))) . ';',
+        'window.NaluAIConfig = ' . wp_json_encode(array(
+            'configUrl' => rest_url('nalu-ai/v1/widget-config'),
+            // "Every page" mode: show the floating chat unless the page already has a chatbot shortcode.
+            'autoFloating' => $settings['load_mode'] === 'auto',
+        )) . ';',
         'before'
     );
 });
@@ -31,26 +37,44 @@ add_action('wp_enqueue_scripts', function () {
 });
 
 /**
+ * [nalu_ai_chatbot]
  * [nalu_ai_chatbot width="420px" height="640px"]
+ * [nalu_ai_chatbot mode="inline" agent="parts-lead" height="640px"]
  *
- * Shows the floating chatbot on this page and optionally overrides its size. The
- * hosted widget always floats, so the shortcode's position in the content doesn't matter.
+ * Floating (the default): shows the floating chatbot on this page, optionally resized;
+ * where the shortcode sits in the content doesn't matter.
+ * Inline: shows the chat right where the shortcode is, as part of the page, with no
+ * launcher or header. `width` is then its maximum width; it fills the content column.
+ *
+ * `agent` picks one of the agents under Settings > Nalu AI > More agents; without it the
+ * main agent is used. A page with a chatbot shortcode doesn't also get the automatic
+ * floating chat.
  */
 add_shortcode('nalu_ai_chatbot', function ($atts) {
     $settings = nalu_ai_get_settings();
 
-    if (!nalu_ai_is_ready($settings)) {
-        return '';
-    }
-
     $atts = shortcode_atts(array(
         'width' => '',
         'height' => '',
+        'mode' => 'floating',
+        'agent' => '',
     ), $atts, 'nalu_ai_chatbot');
+
+    $mode = $atts['mode'] === 'inline' ? 'inline' : 'floating';
+    $agent = nalu_ai_sanitize_agent_slug($atts['agent']);
+
+    // A typo in agent="..." shows nothing rather than quietly using the main agent.
+    if ((trim((string) $atts['agent']) !== '' && $agent === '') || !nalu_ai_get_agent_settings($settings, $agent)) {
+        return '';
+    }
 
     wp_enqueue_script('nalu-ai');
 
-    $attributes = '';
+    $attributes = sprintf(' data-mode="%s"', esc_attr($mode));
+
+    if ($agent !== '') {
+        $attributes .= sprintf(' data-agent="%s"', esc_attr($agent));
+    }
 
     foreach (array('width', 'height') as $key) {
         $value = trim((string) $atts[$key]);
@@ -60,5 +84,11 @@ add_shortcode('nalu_ai_chatbot', function ($atts) {
         }
     }
 
-    return '<div class="nalu-ai-chatbot" data-nalu-ai-chatbot hidden' . $attributes . '></div>';
+    // An inline chat takes up its place in the content; a floating one only marks the page.
+    return sprintf(
+        '<div class="nalu-ai-chatbot nalu-ai-chatbot--%s" data-nalu-ai-chatbot%s%s></div>',
+        esc_attr($mode),
+        $mode === 'floating' ? ' hidden' : '',
+        $attributes
+    );
 });

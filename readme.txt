@@ -4,7 +4,7 @@ Tags: chatbot, ai, chat widget
 Requires at least: 6.3
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 2.0.0
+Stable tag: 2.1.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -47,12 +47,32 @@ Set Display mode to "Only pages with the shortcode" and add `[nalu_ai_chatbot]` 
 The chatbot still floats in the corner. `[nalu_ai_chatbot width="420px" height="640px"]` overrides
 its size on that page.
 
+= How do I put the chat inside a page instead of floating? =
+
+Add `[nalu_ai_chatbot mode="inline" height="640px"]` where the chat should appear, for example in a
+Shortcode block in the middle of the page. It shows as part of the page, with no launcher button or
+header, and fills the content column (`width` caps it). That page doesn't also get the floating chat.
+
+= Can different pages use different agents? =
+
+Yes. Add each extra agent under **Settings > Nalu AI > More agents** with its own slug, client ID,
+and client secret from Nalu, and add this site to that agent's Allowed Origins in Nalu. Then use
+`[nalu_ai_chatbot agent="parts-lead" mode="inline"]` on the page that should use it. Without `agent`,
+the main agent is used. Test connection checks every agent.
+
 = Does it work with page caching plugins? =
 
 Yes. The page only contains a static script; the widget token is fetched from the uncached
 `/wp-json/nalu-ai/v1/widget-config` endpoint.
 
 == Changelog ==
+
+= 2.1.0 =
+* Inline chats: `[nalu_ai_chatbot mode="inline"]` shows the chat inside the page where the shortcode is placed.
+* More agents: add extra agents with their own credentials and pick one per page with `agent="slug"`.
+* A page with a chatbot shortcode no longer also gets the automatic floating chat.
+* Test connection checks every configured agent.
+* Each agent's widget token is cached separately.
 
 = 2.0.0 =
 * Updates from GitHub releases on the Plugins screen, including automatic updates.
