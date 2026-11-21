@@ -19,6 +19,9 @@ function nalu_ai_default_settings() {
         'client_secret' => '',
         'width' => '500px',
         'height' => '600px',
+        // More agents for [nalu_ai_chatbot agent="..."], each with its own embed credentials:
+        // list of array('agent_slug' => ..., 'client_id' => ..., 'client_secret' => ...).
+        'extra_agents' => array(),
     );
 }
 
@@ -56,6 +59,50 @@ function nalu_ai_is_ready($settings) {
         !empty($settings['client_id']) &&
         !empty($settings['client_secret'])
     );
+}
+
+/**
+ * Agent slugs are lowercase words joined by hyphens or underscores.
+ */
+function nalu_ai_sanitize_agent_slug($value) {
+    $value = strtolower(trim((string) $value));
+
+    return preg_match('/^[a-z0-9][a-z0-9_-]*$/', $value) ? $value : '';
+}
+
+/**
+ * Settings for one agent: the main agent when $slug is empty or matches it, otherwise
+ * the "More agents" entry with that slug, with its own credentials. Null when no
+ * configured agent matches, so only agents the admin added can get a widget token.
+ */
+function nalu_ai_get_agent_settings($settings, $slug = '') {
+    $slug = (string) $slug;
+
+    if ($slug === '' || $slug === $settings['agent_slug']) {
+        return nalu_ai_is_ready($settings) ? $settings : null;
+    }
+
+    if (!nalu_ai_is_ready($settings)) {
+        return null;
+    }
+
+    foreach ((array) $settings['extra_agents'] as $agent) {
+        if (
+            is_array($agent) &&
+            isset($agent['agent_slug'], $agent['client_id'], $agent['client_secret']) &&
+            $agent['agent_slug'] === $slug &&
+            $agent['client_id'] !== '' &&
+            $agent['client_secret'] !== ''
+        ) {
+            return array_merge($settings, array(
+                'agent_slug' => $agent['agent_slug'],
+                'client_id' => $agent['client_id'],
+                'client_secret' => $agent['client_secret'],
+            ));
+        }
+    }
+
+    return null;
 }
 
 function nalu_ai_get_site_origin() {
@@ -113,6 +160,10 @@ function nalu_ai_sanitize_settings($input) {
         'client_secret' => $text('client_secret') !== '' ? $text('client_secret') : $current['client_secret'],
         'width' => $current['width'],
         'height' => $current['height'],
+        'extra_agents' => nalu_ai_sanitize_extra_agents(
+            isset($input['extra_agents']) ? $input['extra_agents'] : array(),
+            $current['extra_agents']
+        ),
     );
 
     foreach (array('base_url', 'server_base_url') as $key) {
@@ -148,6 +199,58 @@ function nalu_ai_sanitize_settings($input) {
     }
 
     return $settings;
+}
+
+/**
+ * Rows from the "More agents" table. A row without a slug is dropped (that's how an agent
+ * is removed); a blank secret keeps the one saved for that slug, which is never echoed back.
+ */
+function nalu_ai_sanitize_extra_agents($rows, $current_rows) {
+    $saved_secrets = array();
+
+    foreach ((array) $current_rows as $row) {
+        if (is_array($row) && !empty($row['agent_slug']) && isset($row['client_secret'])) {
+            $saved_secrets[$row['agent_slug']] = $row['client_secret'];
+        }
+    }
+
+    $agents = array();
+
+    foreach (is_array($rows) ? $rows : array() as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $field = function ($key) use ($row) {
+            return isset($row[$key]) ? trim(sanitize_text_field((string) $row[$key])) : '';
+        };
+        $raw_slug = $field('agent_slug');
+
+        if ($raw_slug === '') {
+            continue;
+        }
+
+        $slug = nalu_ai_sanitize_agent_slug($raw_slug);
+
+        if ($slug === '' || isset($agents[$slug])) {
+            add_settings_error(NALU_AI_SETTINGS_OPTION, 'invalid_extra_agent', sprintf(
+                /* translators: %s: the agent slug the admin entered */
+                __('"%s" is not a valid agent slug or is listed twice, so that row was not saved.', 'nalu-ai'),
+                $raw_slug
+            ));
+            continue;
+        }
+
+        $secret = $field('client_secret');
+
+        $agents[$slug] = array(
+            'agent_slug' => $slug,
+            'client_id' => $field('client_id'),
+            'client_secret' => $secret !== '' ? $secret : (isset($saved_secrets[$slug]) ? $saved_secrets[$slug] : ''),
+        );
+    }
+
+    return array_values($agents);
 }
 
 add_action('init', function () {

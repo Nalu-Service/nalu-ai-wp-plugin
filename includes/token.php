@@ -83,12 +83,21 @@ function nalu_ai_token_cache_key($settings) {
 }
 
 /**
+ * Each agent's token is cached separately, so several agents on one site don't evict
+ * each other's token on every page view.
+ */
+function nalu_ai_token_transient($settings) {
+    return NALU_AI_TOKEN_TRANSIENT . '_' . md5($settings['agent_slug']);
+}
+
+/**
  * Cached wrapper around nalu_ai_request_widget_token(). Failures are cached for a
  * minute so an outage or bad credentials don't send one request per page view.
  */
 function nalu_ai_get_widget_token($settings) {
     $key = nalu_ai_token_cache_key($settings);
-    $cached = get_transient(NALU_AI_TOKEN_TRANSIENT);
+    $transient = nalu_ai_token_transient($settings);
+    $cached = get_transient($transient);
 
     if (is_array($cached) && isset($cached['key']) && hash_equals($cached['key'], $key)) {
         if (!empty($cached['failed'])) {
@@ -113,7 +122,7 @@ function nalu_ai_get_widget_token($settings) {
             isset($data['requestUrl']) ? $data['requestUrl'] : 'n/a',
             $token->get_error_message()
         ));
-        set_transient(NALU_AI_TOKEN_TRANSIENT, array('key' => $key, 'failed' => true), NALU_AI_TOKEN_ERROR_TTL);
+        set_transient($transient, array('key' => $key, 'failed' => true), NALU_AI_TOKEN_ERROR_TTL);
 
         return $token;
     }
@@ -121,9 +130,9 @@ function nalu_ai_get_widget_token($settings) {
     $cache_ttl = $token['expiresAt'] ? $token['expiresAt'] - time() - NALU_AI_TOKEN_MIN_LIFETIME : 0;
 
     if ($cache_ttl > 0) {
-        set_transient(NALU_AI_TOKEN_TRANSIENT, array('key' => $key) + $token, $cache_ttl);
+        set_transient($transient, array('key' => $key) + $token, $cache_ttl);
     } else {
-        delete_transient(NALU_AI_TOKEN_TRANSIENT);
+        delete_transient($transient);
     }
 
     return $token;

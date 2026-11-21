@@ -45,7 +45,7 @@ function nalu_ai_settings_fields() {
                 'auto' => __('Every page', 'nalu-ai'),
                 'shortcode' => __('Only pages with the shortcode', 'nalu-ai'),
             ),
-            'description' => __('Add <code>[nalu_ai_chatbot]</code> to a page or post to show the chatbot there. It always floats in the corner; the shortcode can override its size, e.g. <code>[nalu_ai_chatbot width="420px" height="640px"]</code>.', 'nalu-ai'),
+            'description' => __('<code>[nalu_ai_chatbot]</code> shows the floating chatbot on a page, optionally resized: <code>[nalu_ai_chatbot width="420px" height="640px"]</code>. <code>[nalu_ai_chatbot mode="inline" height="640px"]</code> puts the chat right where the shortcode is, as part of the page. Add <code>agent="slug"</code> to use one of the agents under More agents. Pages with a chatbot shortcode don\'t also get the automatic floating chat.', 'nalu-ai'),
         ),
         'base_url' => array(
             'label' => __('Nalu URL', 'nalu-ai'),
@@ -82,6 +82,10 @@ function nalu_ai_settings_fields() {
             'placeholder' => '600px',
             'description' => __('Desktop size, e.g. 600px or 80vh. On phones the chat fills the screen.', 'nalu-ai'),
         ),
+        'extra_agents' => array(
+            'label' => __('More agents', 'nalu-ai'),
+            'type' => 'agents',
+        ),
     );
 }
 
@@ -107,6 +111,11 @@ function nalu_ai_render_field($field) {
     $name = NALU_AI_SETTINGS_OPTION . "[{$key}]";
     $value = $settings[$key];
     $description = isset($field['description']) ? $field['description'] : '';
+
+    if ($field['type'] === 'agents') {
+        nalu_ai_render_extra_agents($value);
+        return;
+    }
 
     switch ($field['type']) {
         case 'checkbox':
@@ -163,6 +172,60 @@ function nalu_ai_render_field($field) {
     }
 }
 
+/**
+ * Table of extra agents: the saved ones plus one empty row for adding another. Clearing
+ * a row's slug removes that agent. Saved secrets are never printed into the page.
+ */
+function nalu_ai_render_extra_agents($agents) {
+    $agents = is_array($agents) ? array_values($agents) : array();
+    $rows = array_merge($agents, array(array('agent_slug' => '', 'client_id' => '', 'client_secret' => '')));
+    $name = NALU_AI_SETTINGS_OPTION . '[extra_agents]';
+    ?>
+    <table class="widefat striped" style="max-width: 760px;">
+        <thead>
+            <tr>
+                <th scope="col"><?php esc_html_e('Agent slug', 'nalu-ai'); ?></th>
+                <th scope="col"><?php esc_html_e('Client ID', 'nalu-ai'); ?></th>
+                <th scope="col"><?php esc_html_e('Client secret', 'nalu-ai'); ?></th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($rows as $index => $agent) : ?>
+                <?php $is_saved = $agent['agent_slug'] !== ''; ?>
+                <tr>
+                    <td>
+                        <input type="text" class="regular-text" style="width: 100%;"
+                            aria-label="<?php esc_attr_e('Agent slug', 'nalu-ai'); ?>"
+                            name="<?php echo esc_attr("{$name}[{$index}][agent_slug]"); ?>"
+                            value="<?php echo esc_attr($agent['agent_slug']); ?>"
+                            placeholder="<?php echo $is_saved ? '' : esc_attr__('Add an agent…', 'nalu-ai'); ?>" />
+                    </td>
+                    <td>
+                        <input type="text" class="regular-text" style="width: 100%;"
+                            aria-label="<?php esc_attr_e('Client ID', 'nalu-ai'); ?>"
+                            name="<?php echo esc_attr("{$name}[{$index}][client_id]"); ?>"
+                            value="<?php echo esc_attr($agent['client_id']); ?>" />
+                    </td>
+                    <td>
+                        <input type="password" class="regular-text" style="width: 100%;" autocomplete="new-password"
+                            aria-label="<?php esc_attr_e('Client secret', 'nalu-ai'); ?>"
+                            name="<?php echo esc_attr("{$name}[{$index}][client_secret]"); ?>"
+                            value=""
+                            placeholder="<?php echo $is_saved && $agent['client_secret'] !== '' ? esc_attr__('Saved. Leave blank to keep it.', 'nalu-ai') : ''; ?>" />
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+    <p class="description">
+        <?php echo wp_kses(
+            __('Optional. Agents for pages that need a different chatbot, such as a lead agent on one page: <code>[nalu_ai_chatbot agent="slug" mode="inline"]</code>. Each needs its own credentials from Nalu and this site in its Allowed Origins. Save to add another row; clear a slug to remove that agent.', 'nalu-ai'),
+            array('code' => array())
+        ); ?>
+    </p>
+    <?php
+}
+
 function nalu_ai_render_settings_page() {
     if (!current_user_can('manage_options')) {
         return;
@@ -182,7 +245,7 @@ function nalu_ai_render_settings_page() {
             <div class="notice notice-<?php echo $test_result['ok'] ? 'success' : 'error'; ?> is-dismissible">
                 <p><?php echo esc_html($test_result['message']); ?></p>
                 <?php if (!empty($test_result['details'])) : ?>
-                    <p><code><?php echo esc_html($test_result['details']); ?></code></p>
+                    <p><code><?php echo nl2br(esc_html($test_result['details'])); ?></code></p>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
@@ -232,29 +295,59 @@ add_action('admin_post_nalu_ai_test_connection', function () {
             'message' => __('Fill in the Nalu URL, agent slug, client ID, and client secret, then save before testing.', 'nalu-ai'),
         );
     } else {
-        $token = nalu_ai_request_widget_token($settings);
+        // The main agent, then each agent under More agents, each with its own credentials.
+        $agents = array($settings);
 
-        if (is_wp_error($token)) {
-            $data = $token->get_error_data();
-            $result = array(
-                'ok' => false,
-                /* translators: %s: error message from Nalu or the HTTP client */
-                'message' => sprintf(__('Connection failed: %s', 'nalu-ai'), $token->get_error_message()),
-                'details' => sprintf(
-                    'POST %s · status %s · siteOrigin %s',
+        foreach ((array) $settings['extra_agents'] as $extra) {
+            $agents[] = array_merge($settings, $extra);
+        }
+
+        $failures = array();
+        $details = array();
+
+        foreach ($agents as $agent) {
+            if ($agent['client_id'] === '' || $agent['client_secret'] === '') {
+                $failures[] = $agent['agent_slug'];
+                $details[] = sprintf('%s · client ID or secret missing', $agent['agent_slug']);
+                continue;
+            }
+
+            $token = nalu_ai_request_widget_token($agent);
+
+            if (is_wp_error($token)) {
+                $data = $token->get_error_data();
+                $failures[] = $agent['agent_slug'];
+                $details[] = sprintf(
+                    '%s · %s · POST %s · status %s · siteOrigin %s',
+                    $agent['agent_slug'],
+                    $token->get_error_message(),
                     isset($data['requestUrl']) ? $data['requestUrl'] : 'n/a',
                     !empty($data['status']) ? $data['status'] : 'no response',
                     isset($data['siteOrigin']) ? $data['siteOrigin'] : 'n/a'
-                ),
+                );
+            } else {
+                // A working connection should take effect immediately, not after a cached failure expires.
+                delete_transient(nalu_ai_token_transient($agent));
+            }
+        }
+
+        if ($failures) {
+            $result = array(
+                'ok' => false,
+                /* translators: %s: comma-separated agent slugs */
+                'message' => sprintf(__('Connection failed for: %s', 'nalu-ai'), implode(', ', $failures)),
+                'details' => implode("\n", $details),
             );
         } else {
-            // A working connection should take effect immediately, not after a cached failure expires.
-            delete_transient(NALU_AI_TOKEN_TRANSIENT);
             $result = array(
                 'ok' => true,
                 'message' => $settings['enabled'] === '1'
-                    ? __('Connected. Nalu issued a widget token for this site.', 'nalu-ai')
-                    : __('Connected. Nalu issued a widget token for this site. Enable the chatbot to show it to visitors.', 'nalu-ai'),
+                    ? sprintf(
+                        /* translators: %d: number of agents */
+                        _n('Connected. Nalu issued a widget token for this site.', 'Connected. Nalu issued widget tokens for all %d agents.', count($agents), 'nalu-ai'),
+                        count($agents)
+                    )
+                    : __('Connected. Enable the chatbot to show it to visitors.', 'nalu-ai'),
             );
         }
     }
