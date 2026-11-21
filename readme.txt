@@ -68,6 +68,7 @@ Yes. The page only contains a static script; the widget token is fetched from th
 == Changelog ==
 
 = 2.1.0 =
+* "Every page" mode now shows the floating chat on templates without a theme footer: the script loads in the page head (still deferred) instead of the footer.
 * Inline chats: `[nalu_ai_chatbot mode="inline"]` shows the chat inside the page where the shortcode is placed.
 * More agents: add extra agents with their own credentials and pick one per page with `agent="slug"`.
 * A page with a chatbot shortcode no longer also gets the automatic floating chat.

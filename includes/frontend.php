@@ -15,7 +15,11 @@ add_action('init', function () {
         plugins_url('assets/js/nalu-ai.js', NALU_AI_FILE),
         array(),
         NALU_AI_VERSION,
-        array('in_footer' => true, 'strategy' => 'defer')
+        // In the head, deferred: it still runs after the page is parsed, and it loads on templates
+        // that never call wp_footer() (landing pages, page-builder canvases), so the floating chat
+        // shows sitewide. A shortcode that enqueues it after wp_head (classic themes) still lands
+        // in the footer, which is the only place left to print it.
+        array('in_footer' => false, 'strategy' => 'defer')
     );
     wp_add_inline_script(
         'nalu-ai',
