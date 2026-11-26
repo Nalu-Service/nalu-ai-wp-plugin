@@ -13,12 +13,24 @@ add_action('rest_api_init', function () {
         'methods' => WP_REST_Server::READABLE,
         'callback' => 'nalu_ai_rest_widget_config',
         'permission_callback' => '__return_true',
+        'args' => array(
+            // Empty for the main agent; otherwise one of the agents added under "More agents".
+            'agent' => array(
+                'type' => 'string',
+                'default' => '',
+                // A malformed slug is refused rather than falling back to the main agent.
+                'validate_callback' => function ($value) {
+                    return $value === '' || nalu_ai_sanitize_agent_slug($value) !== '';
+                },
+                'sanitize_callback' => 'nalu_ai_sanitize_agent_slug',
+            ),
+        ),
     ));
 });
 
-function nalu_ai_rest_widget_config() {
-    $settings = nalu_ai_get_settings();
-    $token = nalu_ai_is_ready($settings) ? nalu_ai_get_widget_token($settings) : null;
+function nalu_ai_rest_widget_config(WP_REST_Request $request) {
+    $settings = nalu_ai_get_agent_settings(nalu_ai_get_settings(), $request->get_param('agent'));
+    $token = $settings ? nalu_ai_get_widget_token($settings) : null;
 
     if (!is_array($token)) {
         return new WP_Error(
