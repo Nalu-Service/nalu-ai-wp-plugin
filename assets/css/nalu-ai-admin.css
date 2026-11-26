@@ -1,0 +1,21 @@
+/*
+ * Settings > Nalu AI: the More agents table sits inside the settings form-table, whose
+ * th/td rules (no left padding, fixed 200px headers) would otherwise apply to it too.
+ */
+.form-table .nalu-ai-agents {
+    width: 100%;
+    max-width: 760px;
+    table-layout: fixed;
+}
+
+.form-table .nalu-ai-agents th,
+.form-table .nalu-ai-agents td {
+    width: auto;
+    padding: 8px 10px;
+    vertical-align: middle;
+}
+
+.form-table .nalu-ai-agents input {
+    width: 100%;
+    max-width: none;
+}

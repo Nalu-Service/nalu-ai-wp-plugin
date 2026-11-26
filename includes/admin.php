@@ -173,15 +173,16 @@ function nalu_ai_render_field($field) {
 }
 
 /**
- * Table of extra agents: the saved ones plus one empty row for adding another. Clearing
- * a row's slug removes that agent. Saved secrets are never printed into the page.
+ * Table of extra agents: the saved ones plus one empty row for adding another. "Add another
+ * agent" appends more empty rows (without JavaScript, saving adds a fresh empty row instead).
+ * Clearing a row's slug removes that agent. Saved secrets are never printed into the page.
  */
 function nalu_ai_render_extra_agents($agents) {
     $agents = is_array($agents) ? array_values($agents) : array();
-    $rows = array_merge($agents, array(array('agent_slug' => '', 'client_id' => '', 'client_secret' => '')));
-    $name = NALU_AI_SETTINGS_OPTION . '[extra_agents]';
+    $empty = array('agent_slug' => '', 'client_id' => '', 'client_secret' => '');
+    $rows = array_merge($agents, array($empty));
     ?>
-    <table class="widefat striped" style="max-width: 760px;">
+    <table class="widefat striped nalu-ai-agents">
         <thead>
             <tr>
                 <th scope="col"><?php esc_html_e('Agent slug', 'nalu-ai'); ?></th>
@@ -189,42 +190,78 @@ function nalu_ai_render_extra_agents($agents) {
                 <th scope="col"><?php esc_html_e('Client secret', 'nalu-ai'); ?></th>
             </tr>
         </thead>
-        <tbody>
+        <tbody data-nalu-ai-agent-rows data-next-index="<?php echo esc_attr(count($rows)); ?>">
             <?php foreach ($rows as $index => $agent) : ?>
-                <?php $is_saved = $agent['agent_slug'] !== ''; ?>
-                <tr>
-                    <td>
-                        <input type="text" class="regular-text" style="width: 100%;"
-                            aria-label="<?php esc_attr_e('Agent slug', 'nalu-ai'); ?>"
-                            name="<?php echo esc_attr("{$name}[{$index}][agent_slug]"); ?>"
-                            value="<?php echo esc_attr($agent['agent_slug']); ?>"
-                            placeholder="<?php echo $is_saved ? '' : esc_attr__('Add an agent…', 'nalu-ai'); ?>" />
-                    </td>
-                    <td>
-                        <input type="text" class="regular-text" style="width: 100%;"
-                            aria-label="<?php esc_attr_e('Client ID', 'nalu-ai'); ?>"
-                            name="<?php echo esc_attr("{$name}[{$index}][client_id]"); ?>"
-                            value="<?php echo esc_attr($agent['client_id']); ?>" />
-                    </td>
-                    <td>
-                        <input type="password" class="regular-text" style="width: 100%;" autocomplete="new-password"
-                            aria-label="<?php esc_attr_e('Client secret', 'nalu-ai'); ?>"
-                            name="<?php echo esc_attr("{$name}[{$index}][client_secret]"); ?>"
-                            value=""
-                            placeholder="<?php echo $is_saved && $agent['client_secret'] !== '' ? esc_attr__('Saved. Leave blank to keep it.', 'nalu-ai') : ''; ?>" />
-                    </td>
-                </tr>
+                <?php nalu_ai_render_extra_agent_row($index, $agent); ?>
             <?php endforeach; ?>
         </tbody>
     </table>
+    <template data-nalu-ai-agent-row-template>
+        <?php nalu_ai_render_extra_agent_row('__INDEX__', $empty); ?>
+    </template>
+    <p>
+        <button type="button" class="button" data-nalu-ai-add-agent hidden>
+            <?php esc_html_e('Add another agent', 'nalu-ai'); ?>
+        </button>
+    </p>
     <p class="description">
         <?php echo wp_kses(
-            __('Optional. Agents for pages that need a different chatbot, such as a lead agent on one page: <code>[nalu_ai_chatbot agent="slug" mode="inline"]</code>. Each needs its own credentials from Nalu and this site in its Allowed Origins. Save to add another row; clear a slug to remove that agent.', 'nalu-ai'),
+            __('Optional. Agents for pages that need a different chatbot, such as a lead agent on one page: <code>[nalu_ai_chatbot agent="slug" mode="inline"]</code>. Each needs its own credentials from Nalu and this site in its Allowed Origins. Slugs are case-sensitive, so copy them exactly. Clear a slug to remove that agent.', 'nalu-ai'),
             array('code' => array())
         ); ?>
     </p>
     <?php
 }
+
+function nalu_ai_render_extra_agent_row($index, $agent) {
+    $name = NALU_AI_SETTINGS_OPTION . "[extra_agents][{$index}]";
+    $is_saved = $agent['agent_slug'] !== '';
+    ?>
+    <tr>
+        <td>
+            <input type="text" class="regular-text"
+                aria-label="<?php esc_attr_e('Agent slug', 'nalu-ai'); ?>"
+                name="<?php echo esc_attr("{$name}[agent_slug]"); ?>"
+                value="<?php echo esc_attr($agent['agent_slug']); ?>"
+                placeholder="<?php echo $is_saved ? '' : esc_attr__('Add an agent…', 'nalu-ai'); ?>" />
+        </td>
+        <td>
+            <input type="text" class="regular-text"
+                aria-label="<?php esc_attr_e('Client ID', 'nalu-ai'); ?>"
+                name="<?php echo esc_attr("{$name}[client_id]"); ?>"
+                value="<?php echo esc_attr($agent['client_id']); ?>" />
+        </td>
+        <td>
+            <input type="password" class="regular-text" autocomplete="new-password"
+                aria-label="<?php esc_attr_e('Client secret', 'nalu-ai'); ?>"
+                name="<?php echo esc_attr("{$name}[client_secret]"); ?>"
+                value=""
+                placeholder="<?php echo $is_saved && $agent['client_secret'] !== '' ? esc_attr__('Saved. Leave blank to keep it.', 'nalu-ai') : ''; ?>" />
+        </td>
+    </tr>
+    <?php
+}
+
+add_action('admin_enqueue_scripts', function ($hook_suffix) {
+    if ($hook_suffix !== 'settings_page_' . NALU_AI_SETTINGS_PAGE) {
+        return;
+    }
+
+    wp_enqueue_style(
+        'nalu-ai-admin',
+        plugins_url('assets/css/nalu-ai-admin.css', NALU_AI_FILE),
+        array(),
+        NALU_AI_VERSION
+    );
+
+    wp_enqueue_script(
+        'nalu-ai-admin',
+        plugins_url('assets/js/nalu-ai-admin.js', NALU_AI_FILE),
+        array(),
+        NALU_AI_VERSION,
+        true
+    );
+});
 
 function nalu_ai_render_settings_page() {
     if (!current_user_can('manage_options')) {
