@@ -62,12 +62,13 @@ function nalu_ai_is_ready($settings) {
 }
 
 /**
- * Agent slugs are lowercase words joined by hyphens or underscores.
+ * Agent slugs are letters, digits, hyphens, and underscores. Nalu slugs are case-sensitive
+ * (e.g. "UxXoq"), so the case is kept exactly as entered.
  */
 function nalu_ai_sanitize_agent_slug($value) {
-    $value = strtolower(trim((string) $value));
+    $value = trim((string) $value);
 
-    return preg_match('/^[a-z0-9][a-z0-9_-]*$/', $value) ? $value : '';
+    return preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]*$/', $value) ? $value : '';
 }
 
 /**

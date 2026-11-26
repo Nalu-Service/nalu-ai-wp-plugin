@@ -4,7 +4,7 @@ Tags: chatbot, ai, chat widget
 Requires at least: 6.3
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 2.1.0
+Stable tag: 2.1.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,11 @@ Yes. The page only contains a static script; the widget token is fetched from th
 `/wp-json/nalu-ai/v1/widget-config` endpoint.
 
 == Changelog ==
+
+= 2.1.1 =
+* Agent slugs keep their capital letters. Nalu slugs are case-sensitive (e.g. `UxXoq`), and 2.1.0 lowercased them, so More agents and `agent="..."` could not find mixed-case agents. Re-enter any slug that was saved in lowercase.
+* More agents has an "Add another agent" button, so you don't have to save first to get a new row.
+* Fixed the More agents table's missing left padding and overflow on the settings page.
 
 = 2.1.0 =
 * "Every page" mode now shows the floating chat on templates without a theme footer: the script loads in the page head (still deferred) instead of the footer.
