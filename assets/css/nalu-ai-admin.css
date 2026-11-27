@@ -19,3 +19,13 @@
     width: 100%;
     max-width: none;
 }
+
+/* Test connection: spinner beside the button, and multi-line failure details. */
+.nalu-ai-test-spinner {
+    float: none;
+    margin-top: 0;
+}
+
+.nalu-ai-test-details {
+    white-space: pre-line;
+}
