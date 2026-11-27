@@ -1,6 +1,7 @@
 <?php
 /**
- * Settings screen (Settings > Nalu AI) and the "Test connection" action.
+ * Settings screen (Settings > Nalu AI) and the "Test connection" action (AJAX, with a
+ * form-post fallback when JavaScript is off).
  */
 
 defined('ABSPATH') || exit;
@@ -304,11 +305,16 @@ function nalu_ai_render_settings_page() {
         <hr />
         <h2><?php esc_html_e('Test connection', 'nalu-ai'); ?></h2>
         <p><?php esc_html_e('Requests a widget token from Nalu with the saved settings. Save any changes first.', 'nalu-ai'); ?></p>
-        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
+            data-nalu-ai-test-connection
+            data-ajax-url="<?php echo esc_url(admin_url('admin-ajax.php')); ?>"
+            data-error-message="<?php esc_attr_e('The test could not run. Reload the page and try again.', 'nalu-ai'); ?>">
             <input type="hidden" name="action" value="nalu_ai_test_connection" />
             <?php wp_nonce_field('nalu_ai_test_connection'); ?>
             <?php submit_button(__('Test connection', 'nalu-ai'), 'secondary', 'submit', false); ?>
+            <span class="spinner nalu-ai-test-spinner"></span>
         </form>
+        <div data-nalu-ai-test-result aria-live="polite"></div>
     </div>
     <?php
 }
@@ -317,6 +323,89 @@ function nalu_ai_test_result_key() {
     return 'nalu_ai_test_result_' . get_current_user_id();
 }
 
+/**
+ * Requests a widget token for the main agent and each agent under More agents, with the saved
+ * settings. Returns array('ok' => bool, 'message' => string, 'details' => string optional).
+ */
+function nalu_ai_run_connection_test() {
+    $settings = nalu_ai_get_settings();
+
+    if (empty($settings['base_url']) || empty($settings['agent_slug']) || empty($settings['client_id']) || empty($settings['client_secret'])) {
+        return array(
+            'ok' => false,
+            'message' => __('Fill in the Nalu URL, agent slug, client ID, and client secret, then save before testing.', 'nalu-ai'),
+        );
+    }
+
+    // The main agent, then each agent under More agents, each with its own credentials.
+    $agents = array($settings);
+
+    foreach ((array) $settings['extra_agents'] as $extra) {
+        $agents[] = array_merge($settings, $extra);
+    }
+
+    $failures = array();
+    $details = array();
+
+    foreach ($agents as $agent) {
+        if ($agent['client_id'] === '' || $agent['client_secret'] === '') {
+            $failures[] = $agent['agent_slug'];
+            $details[] = sprintf('%s · client ID or secret missing', $agent['agent_slug']);
+            continue;
+        }
+
+        $token = nalu_ai_request_widget_token($agent);
+
+        if (is_wp_error($token)) {
+            $data = $token->get_error_data();
+            $failures[] = $agent['agent_slug'];
+            $details[] = sprintf(
+                '%s · %s · POST %s · status %s · siteOrigin %s',
+                $agent['agent_slug'],
+                $token->get_error_message(),
+                isset($data['requestUrl']) ? $data['requestUrl'] : 'n/a',
+                !empty($data['status']) ? $data['status'] : 'no response',
+                isset($data['siteOrigin']) ? $data['siteOrigin'] : 'n/a'
+            );
+        } else {
+            // A working connection should take effect immediately, not after a cached failure expires.
+            delete_transient(nalu_ai_token_transient($agent));
+        }
+    }
+
+    if ($failures) {
+        return array(
+            'ok' => false,
+            /* translators: %s: comma-separated agent slugs */
+            'message' => sprintf(__('Connection failed for: %s', 'nalu-ai'), implode(', ', $failures)),
+            'details' => implode("\n", $details),
+        );
+    }
+
+    return array(
+        'ok' => true,
+        'message' => $settings['enabled'] === '1'
+            ? sprintf(
+                /* translators: %d: number of agents */
+                _n('Connected. Nalu issued a widget token for this site.', 'Connected. Nalu issued widget tokens for all %d agents.', count($agents), 'nalu-ai'),
+                count($agents)
+            )
+            : __('Connected. Enable the chatbot to show it to visitors.', 'nalu-ai'),
+    );
+}
+
+// The settings page script runs the test in place through admin-ajax.php.
+add_action('wp_ajax_nalu_ai_test_connection', function () {
+    if (!current_user_can('manage_options')) {
+        wp_send_json(array('ok' => false, 'message' => __('You are not allowed to do this.', 'nalu-ai')), 403);
+    }
+
+    check_ajax_referer('nalu_ai_test_connection');
+
+    wp_send_json(nalu_ai_run_connection_test());
+});
+
+// Without JavaScript the form posts here, and the result shows as a notice after the redirect.
 add_action('admin_post_nalu_ai_test_connection', function () {
     if (!current_user_can('manage_options')) {
         wp_die(esc_html__('You are not allowed to do this.', 'nalu-ai'), 403);
@@ -324,72 +413,7 @@ add_action('admin_post_nalu_ai_test_connection', function () {
 
     check_admin_referer('nalu_ai_test_connection');
 
-    $settings = nalu_ai_get_settings();
-
-    if (empty($settings['base_url']) || empty($settings['agent_slug']) || empty($settings['client_id']) || empty($settings['client_secret'])) {
-        $result = array(
-            'ok' => false,
-            'message' => __('Fill in the Nalu URL, agent slug, client ID, and client secret, then save before testing.', 'nalu-ai'),
-        );
-    } else {
-        // The main agent, then each agent under More agents, each with its own credentials.
-        $agents = array($settings);
-
-        foreach ((array) $settings['extra_agents'] as $extra) {
-            $agents[] = array_merge($settings, $extra);
-        }
-
-        $failures = array();
-        $details = array();
-
-        foreach ($agents as $agent) {
-            if ($agent['client_id'] === '' || $agent['client_secret'] === '') {
-                $failures[] = $agent['agent_slug'];
-                $details[] = sprintf('%s · client ID or secret missing', $agent['agent_slug']);
-                continue;
-            }
-
-            $token = nalu_ai_request_widget_token($agent);
-
-            if (is_wp_error($token)) {
-                $data = $token->get_error_data();
-                $failures[] = $agent['agent_slug'];
-                $details[] = sprintf(
-                    '%s · %s · POST %s · status %s · siteOrigin %s',
-                    $agent['agent_slug'],
-                    $token->get_error_message(),
-                    isset($data['requestUrl']) ? $data['requestUrl'] : 'n/a',
-                    !empty($data['status']) ? $data['status'] : 'no response',
-                    isset($data['siteOrigin']) ? $data['siteOrigin'] : 'n/a'
-                );
-            } else {
-                // A working connection should take effect immediately, not after a cached failure expires.
-                delete_transient(nalu_ai_token_transient($agent));
-            }
-        }
-
-        if ($failures) {
-            $result = array(
-                'ok' => false,
-                /* translators: %s: comma-separated agent slugs */
-                'message' => sprintf(__('Connection failed for: %s', 'nalu-ai'), implode(', ', $failures)),
-                'details' => implode("\n", $details),
-            );
-        } else {
-            $result = array(
-                'ok' => true,
-                'message' => $settings['enabled'] === '1'
-                    ? sprintf(
-                        /* translators: %d: number of agents */
-                        _n('Connected. Nalu issued a widget token for this site.', 'Connected. Nalu issued widget tokens for all %d agents.', count($agents), 'nalu-ai'),
-                        count($agents)
-                    )
-                    : __('Connected. Enable the chatbot to show it to visitors.', 'nalu-ai'),
-            );
-        }
-    }
-
-    set_transient(nalu_ai_test_result_key(), $result, MINUTE_IN_SECONDS);
+    set_transient(nalu_ai_test_result_key(), nalu_ai_run_connection_test(), MINUTE_IN_SECONDS);
     wp_safe_redirect(nalu_ai_settings_page_url());
     exit;
 });

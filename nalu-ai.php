@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Nalu AI
  * Description:       Adds your Nalu AI chatbot to your WordPress site as a floating chat widget or an inline chat inside your pages.
- * Version:           2.1.1
+ * Version:           2.1.2
  * Requires at least: 6.3
  * Requires PHP:      7.4
  * Author:            Nalu Services
@@ -15,7 +15,7 @@
 
 defined('ABSPATH') || exit;
 
-const NALU_AI_VERSION = '2.1.1';
+const NALU_AI_VERSION = '2.1.2';
 const NALU_AI_FILE = __FILE__;
 const NALU_AI_SETTINGS_OPTION = 'nalu_ai_settings';
 const NALU_AI_TOKEN_TRANSIENT = 'nalu_ai_widget_token';

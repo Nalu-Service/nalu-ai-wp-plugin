@@ -4,7 +4,7 @@ Tags: chatbot, ai, chat widget
 Requires at least: 6.3
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 2.1.1
+Stable tag: 2.1.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,9 @@ Yes. The page only contains a static script; the widget token is fetched from th
 `/wp-json/nalu-ai/v1/widget-config` endpoint.
 
 == Changelog ==
+
+= 2.1.2 =
+* Test connection runs without reloading the settings page and shows the result under the button.
 
 = 2.1.1 =
 * Agent slugs keep their capital letters. Nalu slugs are case-sensitive (e.g. `UxXoq`), and 2.1.0 lowercased them, so More agents and `agent="..."` could not find mixed-case agents. Re-enter any slug that was saved in lowercase.
